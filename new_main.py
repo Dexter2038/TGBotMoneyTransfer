@@ -23,14 +23,15 @@ users_per_page = 10
 
 currencies = {0: "Lucky", 1: "Cash Online", 2: "Another Value"}
 currencies_reverse = {"Lucky": 0, "Cash Online": 1, "Another Value": 2}
-transactions = {
-    0: "Обмен валют",
-    1: "Перевод",
-    2: "Вывод монет",
-    3: "Покупка",
-    4: "Начисление от администратора",
-    5: "Снятие от администратора",
-}
+transactions = [
+    "Обмен валют",
+    "Перевод",
+    "Вывод монет",
+    "Покупка",
+    "Начисление от администратора",
+    "Снятие от администратора",
+]
+categories = ["Футболки", "Кепки"]
 admin_rights = {0: "Главный разработчик"}
 
 
@@ -82,11 +83,40 @@ cur.execute(
     FOREIGN KEY (to_user) REFERENCES users (user_id) ON DELETE SET NULL ON UPDATE SET NULL)"""
 )
 cur.execute(
-    """
-    CREATE TABLE IF NOT EXISTS withdraw_qrs(
+    """CREATE TABLE IF NOT EXISTS withdraw_qrs(
     id INTEGER PRIMARY KEY,
     status INTEGER NOT NULL DEFAULT 0,
-    amount INTEGET NOT NULL
+    amount INTEGER NOT NULL
+    )"""
+)
+cur.execute(
+    """CREATE TABLE IF NOT EXISTS merch(
+    id INTEGER PRIMARY KEY,
+    name CHAR(255) NOT NULL,
+    category INTEGER NOT NULL,
+    description TEXT NOT NULL,
+    cost INTEGER NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT (datetime('now'), 'localtime'))
+    )"""
+)
+cur.execute(
+    """CREATE TABLE IF NOT EXISTS quizzes(
+    id INTEGER PRIMARY KEY,
+    description TEXT NOT NULL,
+    reward TEXT NOT NULL
+    )"""
+)
+cur.execute(
+    """CREATE TABLE IF NOT EXISTS questions(
+    id INTEGER PRIMARY KEY,
+    quiz_iz INTEGER,
+    question TEXT NOT NULL,
+    first_answer CHAR(50) NOT NULL,
+    second_answer CHAR(50) NOT NULL,
+    third_answer CHAR(50) NOT NULL,
+    fourth_answer CHAR(50) NOT NULL,
+    correct_answer INTEGER NOT NULL,
+    FOREIGN KEY (quiz_iz) REFERENCES quizzes (id) ON DELETE CASCADE ON UPDATE CASCADE,
     )"""
 )
 try:
@@ -125,6 +155,7 @@ class UserStates(StatesGroup):
     withdraw_money = State()
     add_money = State()
     substract_money = State()
+    change_user_value = State()
 
 
 @dp.message(F.photo)
@@ -402,6 +433,7 @@ WHERE from_user = {user_id} OR to_user = {user_id} LIMIT {transactions_per_page}
                     to_user_first_name,
                     first_amount,
                     currencies[first_currency],
+                    made_in,
                 )
             case 5:
                 cur.execute(
@@ -422,6 +454,7 @@ WHERE from_user = {user_id} OR to_user = {user_id} LIMIT {transactions_per_page}
                     to_user_first_name,
                     first_amount,
                     currencies[first_currency],
+                    made_in,
                 )
     builder.row(
         types.InlineKeyboardButton(text="⬅", callback_data="TransactionPageChange_0"),
@@ -533,6 +566,7 @@ WHERE from_user = {data["user_id"]} OR to_user = {data["user_id"]} LIMIT {transa
                     to_user_first_name,
                     first_amount,
                     currencies[first_currency],
+                    made_in,
                 )
             case 5:
                 cur.execute(
@@ -553,6 +587,7 @@ WHERE from_user = {data["user_id"]} OR to_user = {data["user_id"]} LIMIT {transa
                     to_user_first_name,
                     first_amount,
                     currencies[first_currency],
+                    made_in,
                 )
     builder.row(
         types.InlineKeyboardButton(
@@ -1203,9 +1238,72 @@ async def gifts(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.answer("Подарочки")
 
 
-@dp.callback_query(F.data == "Merch")
+@dp.callback_query(F.data == "ShowMerch")
 async def merch(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer("""Тут наш мерч""")
+    cur.execute(f"SELECT user_id FROM users WHERE chat_id = {callback.message.chat.id}")
+    user_id = cur.fetchone()[0]
+    cur.execute(
+        "SELECT COUNT(*) FROM transactions WHERE from_user = {} OR to_user = {}".format(
+            user_id, user_id
+        )
+    )
+    trans_num = cur.fetchone()[0]
+    await state.set_data({"user_id": user_id, "trns_num": trans_num})
+    builder = InlineKeyboardBuilder()
+    cur.execute(
+        f"""
+        SELECT id, trans_type, first_amount, first_currency, second_amount, second_currency, from_user, to_user, what_bought, made_in FROM transactions
+WHERE from_user = {user_id} OR to_user = {user_id} LIMIT {transactions_per_page} OFFSET 0"""
+    )
+    results = cur.fetchall()
+    if not results:
+        await bot.answer_callback_query(callback.id, "Транзакции отсутствуют")
+        builder.add(types.InlineKeyboardButton(text="Профиль", callback_data="Profile"))
+        await callback.message.answer(
+            text="Транзакции отсутствуют", reply_markup=builder.as_markup()
+        )
+        return
+    out_results = "Транзакции 1-{} из {}\n\n".format(len(results), trans_num)
+    for idx, trans in enumerate(results):
+        idx += 1
+        (
+            id,
+            trans_type,
+            first_amount,
+            first_currency,
+            second_amount,
+            second_currency,
+            from_user,
+            to_user,
+            what_bought,
+            made_in,
+        ) = trans
+        builder.add(
+            types.InlineKeyboardButton(
+                text=str(idx), callback_data="Transaction_" + str(id)
+            )
+        )
+        match trans_type:
+            case 0:
+                out_results += "{}. Обмен валют. Из {} {} в {} {}. {}\n".format(
+                    idx,
+                    first_amount,
+                    currencies[first_currency],
+                    second_amount,
+                    currencies[second_currency],
+                    made_in,
+                )
+
+    builder.row(
+        types.InlineKeyboardButton(text="⬅", callback_data="TransactionPageChange_0"),
+        types.InlineKeyboardButton(
+            text="➡",
+            callback_data="TransactionPageChange_{}".format(
+                1 if trans_num < len(results) else 0
+            ),
+        ),
+    )
+    await callback.message.answer(out_results, reply_markup=builder.as_markup())
 
 
 @dp.message(Command("/admin"))
@@ -1469,7 +1567,7 @@ async def enter_add_money(message: types.Message, state: FSMContext):
         types.InlineKeyboardButton(text="Подтвердить", callback_data="ConfirmAddMoney")
     )
     data = await state.get_data()
-    await state.set_data({"amount": amount}, **data)
+    await state.set_data({"amount": amount, **data})
     await message.answer(
         "Начислить {} {} клиенту {} {}?".format(
             amount, data["currency"], data["last_name"], data["first_name"]
@@ -1501,6 +1599,11 @@ async def confirm_add_money(callback: types.CallbackQuery, state: FSMContext):
         )
     )
     con.commit()
+    await callback.message.answer(
+        "Вы успешно начислили {} {} пользователю {} {}".format(
+            data["amount"], data["currency"], data["last_name"], data["first_name"]
+        )
+    )
 
 
 @dp.callback_query(F.data.startswith("Substract-"))
@@ -1539,7 +1642,7 @@ async def enter_substract_money(message: types.Message, state: FSMContext):
         )
     )
     data = await state.get_data()
-    await state.set_data({"amount": amount}, **data)
+    await state.set_data({"amount": amount, **data})
     await message.answer(
         "Снять {} {} у клиента {} {}?".format(
             amount, data["currency"], data["last_name"], data["first_name"]
@@ -1571,11 +1674,405 @@ async def confirm_substract_money(callback: types.CallbackQuery, state: FSMConte
         )
     )
     con.commit()
+    await callback.message.answer(
+        "Вы успешно сняли {} {} у пользователя {} {}".format(
+            data["amount"], data["currency"], data["last_name"], data["first_name"]
+        )
+    )
 
 
 @dp.callback_query(F.data.startswith("Change-"))
 async def change_user_value(callback: types.CallbackQuery, state: FSMContext):
-    pass
+    _, change_value, id = callback.data.split("-")
+    cur.execute(
+        "SELECT last_name, first_name, level, username FROM users WHERE user_id = {}".format(
+            id
+        )
+    )
+    last_name, first_name, level, username = cur.fetchone()
+    match change_value:
+        case "Name":
+            await callback.message.answer(
+                "Введите имя и фамилию на которые хотите поменять имя и фамилию пользователя"
+            )
+        case "Level":
+            await callback.message.answer(
+                "Введите число уровня на которое хотите поменять уровень пользователя"
+            )
+        case "Username":
+            await callback.message.answer(
+                """
+Введите @никнейм в телеграме, на который нужно поменять никнейм пользователя.
+Нельзя менять этот параметр просто так, только в случае багов."""
+            )
+    await state.set_data(
+        {
+            "user_id": id,
+            "change_value": change_value,
+            "first_name": first_name,
+            "last_name": last_name,
+            "level": level,
+            "username": username,
+        }
+    )
+    await state.set_state(UserStates.change_user_value)
+
+
+@dp.message(UserStates.change_user_value)
+async def enter_change_user_value(message: types.Message, state: FSMContext):
+    builder = InlineKeyboardBuilder()
+    builder.row(types.InlineKeyboardButton(text="Вернуться", callback_data="Admin"))
+    data = await state.get_data()
+    match data["change_value"]:
+        case "Name":
+            if len(message.text.split(" ")) != 2:
+                await message.answer("Введите имя и фамилию через пробел")
+                return
+            result = message.text.split(" ")
+        case "Level":
+            search = re.search("\d+", message.text)
+            if not search:
+                await message.answer(
+                    text="Введите число", reply_markup=builder.as_markup()
+                )
+                return
+            result = int(search.group())
+        case "Username":
+            result = message.text.split("")[0]
+    builder.row(
+        types.InlineKeyboardButton(
+            text="Подтвердить", callback_data="ConfirmChangeUserValue"
+        )
+    )
+    match data["change_value"]:
+        case "Name":
+            first_name, last_name = result
+            await message.answer(
+                "Вы хотите поменять имя и фамилию пользователя {} {} на {} {}?".format(
+                    data["first_name"], data["last_name"], first_name, last_name
+                ),
+                reply_markup=builder.as_markup(),
+            )
+        case "Level":
+            await message.answer(
+                "Вы хотите изменить уровень пользователя {} {} c {} на {}?".format(
+                    data["last_name"], data["first_name"], data["level"], result
+                ),
+                reply_markup=builder.as_markup(),
+            )
+        case "Username":
+            await message.answer(
+                "Точно нужно изменить никнейм пользователя {} {} с {} на {}?".format(
+                    data["last_name"], data["first_name"], data["username"], result
+                ),
+                reply_markup=builder.as_markup(),
+            )
+    await state.set_data({"result": result, **data})
+
+
+@dp.callback_query(F.data == "ConfirmChangeUserValue")
+async def confirm_change_user_value(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    match data["change_value"]:
+        case "Name":
+            new_first_name, new_last_name = data["result"]
+            cur.execute(
+                """
+UPDATE users SET first_name = "{}", last_name = "{}" WHERE user_id = {}
+""".format(
+                    new_first_name, new_last_name, data["user_id"]
+                )
+            )
+            await callback.message.answer(
+                "Вы успешно сменили имя и фамилию пользователя с {} {} на {} {}.".format(
+                    data["first_name"], data["last_name"], new_first_name, new_last_name
+                )
+            )
+        case "Level":
+            cur.execute(
+                """
+UPDATE users SET level = {} WHERE user_id = {}
+""".format(
+                    data["result"], data["user_id"]
+                )
+            )
+            await callback.message.answer(
+                "Вы успешно изменили уровень пользователя {} {} c {} на {}.".format(
+                    data["last_name"], data["first_name"], data["level"], data["result"]
+                )
+            )
+        case "Username":
+            cur.execute(
+                """
+UPDATE users SET username = "{}" WHERE user_id = {}
+""".format(
+                    data["result"], data["user_id"]
+                )
+            )
+            await callback.message.answer(
+                "Вы успешно изменили никнейм пользователя {} {} с {} на {}.".format(
+                    data["last_name"],
+                    data["first_name"],
+                    data["username"],
+                    data["result"],
+                )
+            )
+    con.commit()
+
+
+@dp.callback_query(F.data == "ShowTransactionsAdmin")
+async def see_transactions(callback: types.CallbackQuery, state: FSMContext):
+    cur.execute("SELECT COUNT(*) FROM transactions")
+    trans_num = cur.fetchone()[0]
+    await state.set_data({"trns_num": trans_num})
+    builder = InlineKeyboardBuilder()
+    cur.execute(
+        f"""
+        SELECT id, trans_type, first_amount, first_currency, second_amount, second_currency, from_user, to_user, what_bought, made_in FROM transactions
+LIMIT {transactions_per_page} OFFSET 0"""
+    )
+    results = cur.fetchall()
+    if not results:
+        await bot.answer_callback_query(callback.id, "Транзакции отсутствуют")
+        builder.add(
+            types.InlineKeyboardButton(text="В админ панель", callback_data="Admin")
+        )
+        await callback.message.answer(
+            text="Транзакции отсутствуют", reply_markup=builder.as_markup()
+        )
+        return
+    out_results = "Транзакции 1-{} из {}\n\n".format(len(results), trans_num)
+    for idx, trans in enumerate(results):
+        idx += 1
+        (
+            id,
+            trans_type,
+            first_amount,
+            first_currency,
+            second_amount,
+            second_currency,
+            from_user,
+            to_user,
+            what_bought,
+            made_in,
+        ) = trans
+        builder.add(
+            types.InlineKeyboardButton(
+                text=str(idx), callback_data="Transaction_" + str(id)
+            )
+        )
+        cur.execute(
+            "SELECT last_name, first_name FROM users WHERE user_id = %s" % from_user
+        )
+        last_name, first_name = cur.fetchone()
+        match trans_type:
+            case 0:
+                out_results += "{}. {} {}. Обмен валют. Из {} {} в {} {}. {}\n".format(
+                    idx,
+                    last_name,
+                    first_name,
+                    first_amount,
+                    currencies[first_currency],
+                    second_amount,
+                    currencies[second_currency],
+                    made_in,
+                )
+            case 1:
+                cur.execute(
+                    "SELECT last_name, first_name FROM users WHERE user_id = %s"
+                    % to_user
+                )
+                to_user_last_name, to_user_first_name = cur.fetchone()
+                out_results += (
+                    "{}. Перевод {} {} от клиента {} {} клиенту {} {}. {}\n".format(
+                        idx,
+                        first_amount,
+                        currencies[first_currency],
+                        last_name,
+                        first_name,
+                        to_user_last_name,
+                        to_user_first_name,
+                        made_in,
+                    )
+                )
+            case 2:
+                out_results += "{}. {} {}. Вывод Cash Online. Сумма: {}. {}\n".format(
+                    idx, last_name, first_name, first_amount, made_in
+                )
+            case 3:
+                out_results += "{}. {} {}. Покупка товара {} за {} Lucky. {}\n".format(
+                    idx, last_name, first_name, what_bought, first_amount, made_in
+                )
+            case 4:
+                cur.execute(
+                    "SELECT last_name, first_name FROM users WHERE user_id = %s"
+                    % to_user
+                )
+                to_user_last_name, to_user_first_name = cur.fetchone()
+                out_results += "{}. Начисление от администратора {} {} клиенту {} {} {} {}. {}\n".format(
+                    idx,
+                    last_name,
+                    first_name,
+                    to_user_last_name,
+                    to_user_first_name,
+                    first_amount,
+                    currencies[first_currency],
+                    made_in,
+                )
+            case 5:
+                cur.execute(
+                    "SELECT last_name, first_name FROM users WHERE user_id = %s"
+                    % to_user
+                )
+                to_user_last_name, to_user_first_name = cur.fetchone()
+                out_results += "{}. Снятие от администратора {} {} у клиента {} {} {} {}. {}\n".format(
+                    idx,
+                    last_name,
+                    first_name,
+                    to_user_last_name,
+                    to_user_first_name,
+                    first_amount,
+                    currencies[first_currency],
+                    made_in,
+                )
+    builder.row(
+        types.InlineKeyboardButton(
+            text="⬅", callback_data="TransactionPageChangeAdmin_0"
+        ),
+        types.InlineKeyboardButton(
+            text="➡",
+            callback_data="TransactionPageChangeAdmin_{}".format(
+                1 if trans_num < len(results) else 0
+            ),
+        ),
+    )
+    await callback.message.answer(out_results, reply_markup=builder.as_markup())
+
+
+@dp.callback_query(F.data.startswith("TransactionPageChangeAdmin_"))
+async def see_transaction_change_page(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.delete()
+    data = await state.get_data()
+    page = int(callback.data.split("_")[1])
+    await state.set_data(data)
+    builder = InlineKeyboardBuilder()
+    cur.execute(
+        f"""
+        SELECT id, trans_type, first_amount, first_currency, second_amount, second_currency, from_user, to_user, what_bought, made_in FROM transactions
+LIMIT {transactions_per_page} OFFSET {transactions_per_page*page}"""
+    )
+    results = cur.fetchall()
+    if not results:
+        await bot.answer_callback_query(callback.id, "Пусто")
+        return
+    out_results = "Транзакции {}-{} из {}\n\n".format(
+        1 + 10 * page, len(results) + 10 * page, data["trns_num"]
+    )
+    for idx, trans in enumerate(results):
+        idx += 1
+        (
+            id,
+            trans_type,
+            first_amount,
+            first_currency,
+            second_amount,
+            second_currency,
+            from_user,
+            to_user,
+            what_bought,
+            made_in,
+        ) = trans
+        builder.add(
+            types.InlineKeyboardButton(
+                text=str(idx), callback_data="Transaction_" + str(id)
+            )
+        )
+        last_name, first_name = cur.fetchone()
+        match trans_type:
+            case 0:
+                out_results += "{}. {} {}. Обмен валют.  Из {} {} в {} {}. {}\n".format(
+                    idx,
+                    last_name,
+                    first_name,
+                    first_amount,
+                    currencies[first_currency],
+                    second_amount,
+                    currencies[second_currency],
+                    made_in,
+                )
+            case 1:
+                cur.execute(
+                    "SELECT last_name, first_name FROM users WHERE user_id = %s"
+                    % to_user
+                )
+                to_user_last_name, to_user_first_name = cur.fetchone()
+                out_results += (
+                    "{}. Перевод {} {} от клиента {} {} клиенту {} {}. {}\n".format(
+                        idx,
+                        first_amount,
+                        currencies[first_currency],
+                        last_name,
+                        first_name,
+                        to_user_last_name,
+                        to_user_first_name,
+                        made_in,
+                    )
+                )
+            case 2:
+                out_results += "{}. {} {}. Вывод Cash Online. Сумма: {}. {}\n".format(
+                    idx, last_name, first_name, first_amount, made_in
+                )
+            case 3:
+                out_results += "{}. {} {}. Покупка товара {} за {} Lucky. {}\n".format(
+                    idx, last_name, first_name, what_bought, first_amount, made_in
+                )
+            case 4:
+                cur.execute(
+                    "SELECT last_name, first_name FROM users WHERE user_id = %s"
+                    % to_user
+                )
+                to_user_last_name, to_user_first_name = cur.fetchone()
+                out_results += "{}. Начисление от администратора {} {} клиенту {} {} {} {}. {}\n".format(
+                    idx,
+                    last_name,
+                    first_name,
+                    to_user_last_name,
+                    to_user_first_name,
+                    first_amount,
+                    currencies[first_currency],
+                    made_in,
+                )
+            case 5:
+                cur.execute(
+                    "SELECT last_name, first_name FROM users WHERE user_id = %s"
+                    % to_user
+                )
+                to_user_last_name, to_user_first_name = cur.fetchone()
+                out_results += "{}. Снятие от администратора {} {} у клиента {} {} {} {}. {}\n".format(
+                    idx,
+                    last_name,
+                    first_name,
+                    to_user_last_name,
+                    to_user_first_name,
+                    first_amount,
+                    currencies[first_currency],
+                    made_in,
+                )
+    builder.row(
+        types.InlineKeyboardButton(
+            text="⬅",
+            callback_data="TransactionPageChangeAdmin_{}".format(
+                page - 1 if page != 0 else 0
+            ),
+        ),
+        types.InlineKeyboardButton(
+            text="➡",
+            callback_data="TransactionPageChangeAdmin_{}".format(
+                page + 1 if data["trns_num"] < len(results) + 10 * page else page
+            ),
+        ),
+    )
+    await callback.message.answer(out_results, reply_markup=builder.as_markup())
 
 
 @dp.message(UserStates.login)
@@ -1616,13 +2113,35 @@ async def admin_password(message: types.Message, state: FSMContext):
 @dp.callback_query(F.data == "Admin")
 async def admin_panel(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
-    cur.execute("SELECT admin FROM users WHERE chat_id = %s" % callback.message.chat.id)
+    cur.execute(
+        "SELECT admin FROM users WHERE chat_id = {}".format(callback.message.chat.id)
+    )
     if not cur.fetchone()[0]:
         return
     builder = InlineKeyboardBuilder()
     builder.add(
         types.InlineKeyboardButton(
             text="Просмотреть пользователей", callback_data="ShowUsers"
+        )
+    )
+    builder.add(
+        types.InlineKeyboardButton(
+            text="Просмотреть транзакции", callback_data="ShowTransactionsAdmin"
+        )
+    )
+    builder.add(
+        types.InlineKeyboardButton(
+            text="Просмотреть мерч", callback_data="ShowMerchAdmin"
+        )
+    )
+    builder.add(
+        types.InlineKeyboardButton(
+            text="Добавить администратора", callback_data="Addmin"
+        )
+    )
+    builder.add(
+        types.InlineKeyboardButton(
+            text="Снять администратора", callback_data="SubAdmin"
         )
     )
     await callback.message.answer(
