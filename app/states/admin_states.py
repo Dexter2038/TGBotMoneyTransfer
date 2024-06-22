@@ -1,0 +1,26 @@
+from aiogram.fsm.state import State, StatesGroup
+
+
+class AdminStates(StatesGroup):
+    create_merch_photo = State()
+    create_merch_name = State()
+    create_merch_description = State()
+    create_merch_cost = State()
+    change_user_value = State()
+    merch_change_property = State()
+    add_quiz = State()
+    add_merch_category = State()
+    add_question_quiz = State()
+    edit_question_question = State()
+    edit_answer_question = State()
+    edit_correct_answer_question = State()
+    add_admin = State()
+    substract_admin = State()
+    change_course = State()
+    mailing_link = State()
+    set_sub_reward = State()
+    set_ref_reward = State()
+    write_message = State()
+    write_message_to_user = State()
+    add_money = State()
+    substract_money = State()
