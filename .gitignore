@@ -1,12 +1,10 @@
 .venv
+main.py
+course.txt
 __pycache__
 .env
 database.db
 database_assignments.txt
 out.txt
 setup_structure.py
-main.py
-course.txt
 .py
-course.txt
-main.py
