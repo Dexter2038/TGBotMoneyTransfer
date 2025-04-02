@@ -5,6 +5,7 @@
 1. Structure (I learnt about the structure after some time. It`s pretty simple and helpful).
 2. You can make from your project modular (Also structure, but bit different).
 3. Using the database in one file or in one directory but in different files.
+4. Project was frozen, so you can use it freely, as you want.
 
 ### I found the example of the structure [on GitHub](https://github.com/Latand/aiogram-bot-template/tree/7c151a4077fa5bb33f9feaea454e60265d380995), but made it modular and more scalable.
 
@@ -15,5 +16,6 @@
 1. Структура (Спустя время я научился, что структура это простая вещь, но очень полезная).
 2. Проект основанный на модулях помогает разделить всё на разные части.
 3. Использование БД в одном файле или в одной директории, но в разных файлах.
+4. Проект был заморожен, крутите, вертите проект, как хотите
 
 ### Я нашёл пример этой структуры [вот тут](https://telegra.ph/Novaya-struktura-dlya-bota-na-baze-aiogram-11-27?ysclid=lxqfy1rits845146884).
