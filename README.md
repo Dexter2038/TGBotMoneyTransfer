@@ -1,7 +1,7 @@
 # EN:
 # Telegram Bot for commercial purposes made by me.
 
-**I`m sorry that you're not allowed to use it, but you can learn something from it:**
+**~~I`m sorry that~~ You're ~~not~~ allowed to use it, ~~but~~ you can learn something from it:**
 1. Structure (I learnt about the structure after some time. It`s pretty simple and helpful).
 2. You can make from your project modular (Also structure, but bit different).
 3. Using the database in one file or in one directory but in different files.
@@ -12,7 +12,7 @@
 # RU:
 # Телеграм бот, сделанный мною с коммерческими целями.
 
-**Извиняюсь, что Вы не можете использовать этот проект, но вы можете чему-то научиться, отсюда, (как сделал я)**
+**~~Извиняюсь, что~~ Вы ~~не~~ можете использовать этот проект, ~~но~~ вы можете чему-то научиться, отсюда, (как сделал я)**
 1. Структура (Спустя время я научился, что структура это простая вещь, но очень полезная).
 2. Проект основанный на модулях помогает разделить всё на разные части.
 3. Использование БД в одном файле или в одной директории, но в разных файлах.
